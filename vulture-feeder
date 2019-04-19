@@ -14,9 +14,8 @@
 #
 # STATUS:  Pre-Alpha!  Only functions are deleted currently.
 #          You may need to do some manual editing to fix things that break.
-# BUGS:
-#          • Functions with blank lines.
-#          • May wipe out the first line of a tripple-quote comment
+# BUGS:    Functions with blank lines.
+#          See: https://github.com/jonathancross/segwit-p2sh/commit/e1feee4e
 #
 # AUTHOR:  Jonathan Cross 0xC0C076132FFA7695 (jonathancross.com)
 # LICENSE: WTFPL
@@ -27,8 +26,7 @@ import sys
 import re
 import fileinput
 
-CLEANUP_ITEMS = {}
-
+# Parses output from the vulture command being piped into this script.
 def parse_vulture(line):
     FILENAME_LINE = 0
     TYPE = 2
@@ -43,13 +41,16 @@ def parse_vulture(line):
                 'file_name': pieces.group(1),
                 'line_no': int(pieces.group(2))}
 
-def cleanup_files():
-    for file_name, locations in CLEANUP_ITEMS.items():
+# Outer loop handling one or more files to be cleaned up.
+def cleanup_files(vulture_items):
+    for file_name, locations in vulture_items.items():
       cleanup_file(file_name, locations)
 
+# Cleans up zero or more dirty code chunks (locations) in a single file.
 def cleanup_file(file_name, locations):
     func_indent_len = 0
     func_state = 'not_in_func' # TODO: Make constants?
+    func_state_type = ''
     print('File: ' + file_name)
     dirty_file_contents = get_file_contents(file_name)
     clean_file_contents = []
@@ -85,7 +86,7 @@ def cleanup_file(file_name, locations):
             if not is_indented:
                 func_state_type = 'def_end'
                 func_state = 'not_in_func'
-        # If not out of function being deleted...
+        # If not in a function being deleted...
         if func_state == 'not_in_func':
             clean_file_contents.append(line)
         else:
@@ -95,26 +96,27 @@ def cleanup_file(file_name, locations):
     clean_file.writelines(clean_file_contents)
     clean_file.close()
 
+# Loads and returns the contents of a file.
 def get_file_contents(file_name):
     dirty_file = open(file_name, 'r')
     dirty_file_contents = dirty_file.readlines()
     dirty_file.close()
     return dirty_file_contents
 
-def print_locations(locations):
-    for loc in locations:
-        print('    - ' + loc['func_name'] + ' on line ' + str(loc['line_no']))
+# Read lines from STDIN indicating what should be cleaned up.
+def read_vulture_data():
+    # List of items (file name & line number) considered unnecessary.
+    vulture_items = {}
+    for line in sys.stdin.read().split('\n'):
+        cleanup_item = parse_vulture(line)
+        if cleanup_item:
+            fn = cleanup_item['file_name']
+            del cleanup_item['file_name']
+            if not fn in vulture_items:
+                vulture_items[fn] = []
+            vulture_items[fn].append(cleanup_item)
+    return vulture_items
 
-
-# Read lines from STDIN, remember the items to be cleaned up later.
-for line in sys.stdin.read().split('\n'):
-    cleanup_item = parse_vulture(line)
-    if cleanup_item:
-        fn = cleanup_item['file_name']
-        del cleanup_item['file_name']
-        if not fn in CLEANUP_ITEMS:
-            CLEANUP_ITEMS[fn] = []
-        CLEANUP_ITEMS[fn].append(cleanup_item)
-
-cleanup_files()
+# Begin cleanup process:
+cleanup_files(read_vulture_data())
 
