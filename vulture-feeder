@@ -15,6 +15,9 @@
 #          Each modified file will be written as FILENAME.new so as not to damage the original.
 #          Eventually this will change to overwrite the original file.
 #
+# TESTING: cd test
+#          ./_run_tests.sh
+#
 # STATUS:  Pre-Alpha!  Only functions are deleted currently.
 #          You may need to do some manual editing to fix things that break.
 #
@@ -155,5 +158,6 @@ def read_vulture_data():
     return vulture_items
 
 # Begin cleanup process:
-cleanup_files(read_vulture_data())
+if __name__ == "__main__":
+    cleanup_files(read_vulture_data())
 
