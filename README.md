@@ -15,9 +15,12 @@ Check what vulture finds:
 
     vulture mydir
 
-If you agree to DESTROY the code vulture found:
+If you agree to wipe out the code vulture found:
 
     vulture mydir | vulture-feeder
+
+Each modified file will be written as FILENAME.new so as not to damage the original.
+Eventually this will change to overwrite the original file.
 
 ### Status
 
@@ -25,10 +28,14 @@ Pre-Alpha!  Only functions are deleted currently.
 
 You may need to do some manual editing to fix things that break.
 
+### Testing
+
+    cd test
+    ./_run_tests.sh
+
 ### Known Bugs
 
-* Functions with blank lines.
-* May wipe out the first line of a tripple-quote comment
+* Comments are not properly handled yet and can break the script.
 
 ### Author
 
