@@ -33,6 +33,6 @@ for TEST in *_test.txt; do
     echo '-------------------------------------------------'
     echo 'You can reproduce this diff by running:'
     echo "cat ${TEST} | ../vulture-feeder > /dev/null; diff ${expected_file} ${RESULT_FILE}"
-    break
+    echo '-------------------------------------------------'
   fi
 done

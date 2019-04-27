@@ -56,5 +56,3 @@ def sixth(a,
     """
 
     return a
-
-
