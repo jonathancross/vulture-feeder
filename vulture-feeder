@@ -22,6 +22,7 @@
 #          You may need to do some manual editing to fix things that break.
 #
 # BUGS:    • Comments are not properly handled yet and can break the script.
+#          • Nested functions not handled.  Would need to count indentation, etc.
 #
 # AUTHOR:  Jonathan Cross 0xC0C076132FFA7695 (jonathancross.com)
 # LICENSE: WTFPL
@@ -96,24 +97,24 @@ def get_line_parsing_state(i, line, locations, state):
             # DEBUG:
             print("   ---> Prev blank was the END of func.  Now line is '" + line_unindent.rstrip() + "'")
 
-    if not state['in_func']:
-        # Check all code locations to see if they match this line
-        # TODO: Optimize - we only need to check the first location (locations[0]) (then delete it) because they are in order.
-        for loc in locations:
-            # If current location matches the start of a function to remove...
-            if cur_line_no == loc['line_no']:
-                # TODO: Remove this loc to speed up future searches
-                state['func_indent_len'] = line_indent_len
-                # First line of a function that will be removed.
-                # Now need to find if it is a func def, or just decoration:
-                state['in_func'] = True
-                if line_unindent.startswith('def '):
-                    state['func_position'] = 'def_line'
-                else:
-                    state['func_position'] = 'decorator_line'
-                print('  ' + str(loc['line_no']) + '. in_func: ' + str(state['in_func']) + ', func_position: ' + state['func_position'] + ', indent=' + str(state['func_indent_len']) + ' ' + loc['func_name'] + ' = ' + line_unindent.rstrip())
+    # Check if we still have any functions to remove:
+    if len(locations):
+        # Check if line matches the start of a function to remove:
+        if cur_line_no == locations[0]['line_no']:
+            state['func_indent_len'] = line_indent_len
+            # First line of a function that will be removed.
+            # Now need to find if it is a func def, or just decoration:
+            state['in_func'] = True
+            if line_unindent.startswith('def '):
+                state['func_position'] = 'def_line'
+            else:
+                state['func_position'] = 'decorator_line'
+            print('  ' + str(locations[0]['line_no']) + '. in_func: ' + str(state['in_func']) + ', func_position: ' + state['func_position'] + ', indent=' + str(state['func_indent_len']) + ' ' + locations[0]['func_name'] + ' = ' + line_unindent.rstrip())
+            # Remove this code deletion location as it is now taken care of.
+            del locations[0]
+
     # If previous round, the line was an @ decorator before the actual def:
-    elif state['func_position'] == 'decorator_line':
+    if state['func_position'] == 'decorator_line':
         if line_unindent.startswith('def '):
             state['func_position'] = 'def_line'
     # If previous round, the def was found, then we now enter the body of the func.

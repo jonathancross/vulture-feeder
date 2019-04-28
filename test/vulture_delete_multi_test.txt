@@ -1,0 +1,5 @@
+source_doc.py:6: unused function 'first' (60% confidence)
+source_doc.py:9: unused function 'second' (60% confidence)
+source_doc.py:18: unused function 'third' (60% confidence)
+source_doc.py:22: unused function 'fourth' (60% confidence)
+source_doc.py:50: unused function 'sixth' (60% confidence)

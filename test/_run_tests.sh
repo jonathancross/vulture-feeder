@@ -21,7 +21,7 @@ for TEST in *_test.txt; do
   [ -f "${RESULT_FILE}" ] && rm -f "${RESULT_FILE}"
   base="${TEST%_test.txt}"
   expected_file="${base}_expected.txt"
-  printf "   • %-13s : " "${base#vulture_}"
+  printf "   • %-16s : " "${base#vulture_}"
   cat "${TEST}" | ../vulture-feeder > /dev/null
   if diff "${expected_file}" "${RESULT_FILE}" > /dev/null; then
     echo "${COLOR_GREEN}[PASS]${COLOR_DEFAULT}"
