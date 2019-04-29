@@ -3,8 +3,12 @@
 #
 # USAGE:   ./_run_tests.sh
 #
-# STATUS:  Currently failing vulture_delete_fifth_expected.txt
+# STATUS:  Currently failing tests:
+#            • vulture_delete_x_comment
+#            • vulture_delete_x_nested
+#
 # AUTHOR:  Jonathan Cross 0xC0C076132FFA7695 (jonathancross.com)
+#
 # LICENSE: WTFPL
 #          https://github.com/jonathancross/vulture-feeder/blob/master/LICENSE
 ################################################################################

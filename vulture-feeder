@@ -12,8 +12,8 @@
 #          If you agree to wipe out the code vulture found:
 #          vulture mydir | vulture-feeder
 #
-#          Each modified file will be written as FILENAME.new so as not to damage the original.
-#          Eventually this will change to overwrite the original file.
+#          Each modified file will be written as mydir/FILENAME.new so as not to damage the original.
+#          Eventually this will change to overwrite the original files.
 #
 # TESTING: cd test
 #          ./_run_tests.sh
