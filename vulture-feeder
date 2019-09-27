@@ -55,7 +55,6 @@ def cleanup_files(vulture_items):
 
 def cleanup_file(file_name, locations):
     """Cleans up zero or more dirty code chunks (locations) in a single file."""
-    print('File: ' + file_name)
     dirty_file_contents = get_file_contents(file_name)
     clean_file_contents = get_clean_file_contents(dirty_file_contents, locations)
     clean_file = open(file_name + '.new', 'w+')
@@ -63,96 +62,77 @@ def cleanup_file(file_name, locations):
     clean_file.close()
 
 def get_clean_file_contents(dirty_file_contents, locations):
-    """Loops through a lines to determine if each should be preserved or discarded."""
+    """Loop through lines and determine if it should be preserved or discarded."""
     clean_file_contents = []
-    state =  {
-        'func_indent_len': 0,
-        'in_func': False,
-        'func_position': '',
-        'is_clean': None
-    }
-    for i, line in enumerate(dirty_file_contents):
-        state = get_line_parsing_state(i, line, locations, state)
-        if state['is_clean']:
-            clean_file_contents.append(line)
+    cur_line_no = 0
+    while cur_line_no < len(dirty_file_contents):
+        # Check if it is a func to be removed?
+        if len(locations) > 0 and cur_line_no == locations[0]['line_no']-1:
+            # Remove item from stack
+            del locations[0]
+            # Fast-forward read head to end of the func
+            next_line_no = find_func(dirty_file_contents,cur_line_no) + 1  # TODO: Check if off-by-one
+            cur_line_no = next_line_no
+        else:
+            clean_file_contents.append(dirty_file_contents[cur_line_no])
+            cur_line_no += 1
     return clean_file_contents
 
-def get_line_parsing_state(i, line, locations, state):
-    """Determines if a particular line should be preserved or discarded."""
-    cur_line_no = i + 1
-    line_unindent = line.lstrip()
-    line_indent_len = len(line) - len(line_unindent) # Sometimes == 0 for blank lines!
-    # Handle blank line found on prev round.  Is this the end of the func?
-    if state['func_position'] == 'def_body_blank_possible_end':
-        # Not sure if this is enough.  Can next function be indented more than prev?
-        is_indented = line_indent_len > state['func_indent_len']
-        if is_indented or line_unindent == '':
-            state['func_position'] = 'def_body'
-            # DEBUG:
-            print("   ---> Prev blank was NOT the end of func.  Now line is '" + line_unindent.rstrip() + "'")
+def check_comment(line, in_comment):
+    """ helper function for find_func. finds multi-line comments and single-line comments.
+        outputs in_comment=True if line is inside a multi-line comment. """
+    is_dirty = False
+    is_comment = False
+    idx_comment = line.find('#')
+    n_multcomment = line.count('"""')
+    idx_multcomment = line.find('"""')
+    if n_multcomment > 0 and (idx_comment==-1 or idx_comment>idx_multcomment):
+        is_dirty = idx_multcomment > 0
+        if n_multcomment % 2 != 0:
+            in_comment = not in_comment
         else:
-            state['func_position'] = 'def_end'
-            state['in_func'] = False
-            state['func_indent_len'] = 0
-            # DEBUG:
-            print("   ---> Prev blank was the END of func.  Now line is '" + line_unindent.rstrip() + "'")
+            is_comment = True
+    elif idx_comment == 0:
+        is_comment = True
+    return is_comment, in_comment, is_dirty
 
-    # Check if we still have any functions to remove:
-    if len(locations):
-        # Check if line matches the start of a function to remove:
-        if cur_line_no == locations[0]['line_no']:
-            state['func_indent_len'] = line_indent_len
-            # First line of a function that will be removed.
-            # Now need to find if it is a func def, or just decoration:
-            state['in_func'] = True
-            if line_unindent.startswith('def '):
-                state['func_position'] = 'def_line'
-            else:
-                state['func_position'] = 'decorator_line'
-            print('  ' + str(locations[0]['line_no']) + '. in_func: ' + str(state['in_func']) + ', func_position: ' + state['func_position'] + ', indent=' + str(state['func_indent_len']) + ' ' + locations[0]['func_name'] + ' = ' + line_unindent.rstrip())
-            # Remove this code deletion location as it is now taken care of.
-            del locations[0]
-
-    # If previous round, the line was an @ decorator before the actual def:
-    if state['func_position'] == 'decorator_line':
-        if line_unindent.startswith('def '):
-            state['func_position'] = 'def_line'
-    # If previous round, the def was found, then we now enter the body of the func.
-    # TODO: Can we combine 'def_line' and 'def_body' ?
-    elif state['func_position'] == 'def_line':
-        # Comment line:
-        if line_unindent.startswith('#'):
-            # DEBUG:
-            print(' COMMENT: ' + line.rstrip())
-        is_indented = line_indent_len > state['func_indent_len']
-        if is_indented:
-            state['func_position'] = 'def_body'
-    elif state['func_position'] == 'def_body':
-        # blank line:
-        if line_unindent == '':
-            state['func_position'] = 'def_body_blank_possible_end'
-        # Comment line:
-        elif line_unindent.startswith('#'):
-            # DEBUG:
-            print(' COMMENT: ' + line.rstrip())
-        else:
-            is_indented = line_indent_len > state['func_indent_len']
-            if not is_indented:
-                state['func_position'] = 'def_end'
-                state['in_func'] = False
-                state['func_indent_len'] = 0
-    # If not in a function being deleted...
-    if not state['in_func']:
-        state['is_clean'] = True
-    elif line_unindent == '':
-        state['is_clean'] = False
-        # DEBUG:
-        print(' BLANK ################################################ ')
+def get_func_end(lines, cur_line_no, i, idx_fuzzy):
+    """ helper function for find_func, finds blank lines and comments after end of function """
+    if idx_fuzzy==-1:
+        idx_out = cur_line_no+i
     else:
-        state['is_clean'] = False
-        # DEBUG:
-        print('      X ' + line_unindent.rstrip())
-    return state
+        idx_out = cur_line_no+idx_fuzzy
+    while idx_out > 1:
+        line_stripped = lines[idx_out].lstrip()
+        if len(lines[idx_out].lstrip()) > 0 and line_stripped[0] in ['#', '"']:
+            idx_out -= 1
+        else:
+            break
+    return idx_out
+
+def find_func(lines, cur_line_no):
+    """ cur_line_no indicates start of function, including decorators and comments before
+        the actual function definition. output is the last line of the function """
+    idx_fuzzy  = -1
+    in_comment = False
+    len_indent = len(lines[cur_line_no]) - len(lines[cur_line_no].lstrip())
+    if lines[cur_line_no].lstrip().startswith('@'):
+        cur_line_no += 1
+    for i,line in enumerate(lines[cur_line_no+1:]):
+        line_stripped = line.lstrip()
+        is_comment, in_comment, is_dirty = check_comment(line_stripped, in_comment)
+        if in_comment or len(line_stripped)==0:
+            continue
+        is_clean_comment = is_comment and not is_dirty and not in_comment
+        if is_clean_comment:
+            if idx_fuzzy==-1:
+                idx_fuzzy = i
+            continue
+        # did we find end of function?
+        if len(line)-len(line_stripped) <= len_indent:
+            return get_func_end(lines, cur_line_no, i, idx_fuzzy)
+        idx_fuzzy = -1
+    return get_func_end(lines, cur_line_no+1, i, idx_fuzzy)
 
 def get_file_contents(file_name):
     """Loads and returns the contents of a file."""
