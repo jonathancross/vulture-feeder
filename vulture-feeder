@@ -55,7 +55,6 @@ def cleanup_files(vulture_items):
 
 def cleanup_file(file_name, locations):
     """Cleans up zero or more dirty code chunks (locations) in a single file."""
-    print('File: ' + file_name)
     dirty_file_contents = get_file_contents(file_name)
     clean_file_contents = get_clean_file_contents(dirty_file_contents, locations)
     clean_file = open(file_name + '.new', 'w+')
@@ -68,37 +67,26 @@ def get_clean_file_contents(dirty_file_contents, locations):
     cur_line_no = 0
     while cur_line_no < len(dirty_file_contents):
         # Check if it is a func to be removed?
-        if len(locations) > 0 and cur_line_no == locations[0]['line_no']:
-
+        if len(locations) > 0 and cur_line_no == locations[0]['line_no']-1:
             # Remove item from stack
             del locations[0]
             # Fast-forward read head to end of the func
-            cur_line_no = find_func(dirty_file_contents[cur_line_no:]) + 1 # TODO: Check if off-by-one
+            next_line_no = find_func(dirty_file_contents,cur_line_no) + 1  # TODO: Check if off-by-one
+            cur_line_no = next_line_no
         else:
             clean_file_contents.append(dirty_file_contents[cur_line_no])
             cur_line_no += 1
     return clean_file_contents
 
-################################################################################
-# BEGIN DANIEL
-################################################################################
-
-"""
-check_comment determines if we are in a single-line or multi-line comment
-input   line            string      current text line
-        in_comment      boolean     flag that shows if we are in a multi-line comment
-output  is_comment      boolean     flag that shows if the current line is a comment
-        in_comment      boolean     flag that shows if we are in a multi-line comment
-        is_dirty        boolean     flag that shows if the line also contains code (for multi-line comments)
-"""
-
 def check_comment(line, in_comment):
+    """ helper function for find_func. finds multi-line comments and single-line comments.
+        outputs in_comment=True if line is inside a multi-line comment. """
     is_dirty = False
     is_comment = False
     idx_comment = line.find('#')
     n_multcomment = line.count('"""')
     idx_multcomment = line.find('"""')
-    if n_multcomment > 0 and idx_comment > idx_multcomment:
+    if n_multcomment > 0 and (idx_comment==-1 or idx_comment>idx_multcomment):
         is_dirty = idx_multcomment > 0
         if n_multcomment % 2 != 0:
             in_comment = not in_comment
@@ -108,50 +96,43 @@ def check_comment(line, in_comment):
         is_comment = True
     return is_comment, in_comment, is_dirty
 
-"""
-find_func identifies the starting and end line of the next function. decorators and comments outside of the function
-are considered to be part of the function
-input   lines           string[]    multiple lines of text
-output  li_ret_idx      ()[]        list of tuples, where each tuple contains start and end indices of function.
-                                    the last tuple in the list contains indices of the outer-most function.
-"""
-def find_func(lines):
-    idx_fuzzy               = -1
-    in_comment              = False
-    li_idx_start            = 0
-    li_indent               = []
-    li_ret_idx              = []
-    for i,line in enumerate(lines):
+def get_func_end(lines, cur_line_no, i, idx_fuzzy):
+    """ helper function for find_func, finds blank lines and comments after end of function """
+    if idx_fuzzy==-1:
+        idx_out = cur_line_no+i
+    else:
+        idx_out = cur_line_no+idx_fuzzy
+    while idx_out > 1:
+        line_stripped = lines[idx_out].lstrip()
+        if len(lines[idx_out].lstrip()) > 0 and line_stripped[0] in ['#', '"']:
+            idx_out -= 1
+        else:
+            break
+    return idx_out
+
+def find_func(lines, cur_line_no):
+    """ cur_line_no indicates start of function, including decorators and comments before
+        the actual function definition. output is the last line of the function """
+    idx_fuzzy  = -1
+    in_comment = False
+    len_indent = len(lines[cur_line_no]) - len(lines[cur_line_no].lstrip())
+    if lines[cur_line_no].lstrip().startswith('@'):
+        cur_line_no += 1
+    for i,line in enumerate(lines[cur_line_no+1:]):
         line_stripped = line.lstrip()
         is_comment, in_comment, is_dirty = check_comment(line_stripped, in_comment)
-        if in_comment:
+        if in_comment or len(line_stripped)==0:
             continue
         is_clean_comment = is_comment and not is_dirty and not in_comment
-        if idx_fuzzy==-1 and (is_clean_comment  or line_stripped.startswith('@') or len(line_stripped)==0):
-            idx_fuzzy = i
-            continue
-        # did we find a function definition?
-        if line_stripped.startswith('def '):
-            if idx_fuzzy == -1:
-                li_idx_start = i
-            else:
-                li_idx_start = idx_fuzzy
-            li_indent.insert(0, len(line) - len(line_stripped))
-        # did we find end of function?
-        elif len(li_indent) > 0 and len(line)-len(line_stripped) <= li_indent[-1]:
+        if is_clean_comment:
             if idx_fuzzy==-1:
-                li_ret_idx.insert(0, (li_idx_start,i))
-            else:
-                li_ret_idx.insert(0, (li_idx_start,idx_fuzzy))
-            li_idx_start = 0
-            li_indent = []
+                idx_fuzzy = i
+            continue
+        # did we find end of function?
+        if len(line)-len(line_stripped) <= len_indent:
+            return get_func_end(lines, cur_line_no, i, idx_fuzzy)
         idx_fuzzy = -1
-    # JC ADDED THIS:
-    return li_ret_idx[0][1]
-
-################################################################################
-# END DANIEL
-################################################################################
+    return get_func_end(lines, cur_line_no+1, i, idx_fuzzy)
 
 def get_file_contents(file_name):
     """Loads and returns the contents of a file."""
