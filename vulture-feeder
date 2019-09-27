@@ -55,7 +55,6 @@ def cleanup_files(vulture_items):
 
 def cleanup_file(file_name, locations):
     """Cleans up zero or more dirty code chunks (locations) in a single file."""
-    print('File: ' + file_name)
     dirty_file_contents = get_file_contents(file_name)
     clean_file_contents = get_clean_file_contents(dirty_file_contents, locations)
     clean_file = open(file_name + '.new', 'w+')
@@ -69,14 +68,11 @@ def get_clean_file_contents(dirty_file_contents, locations):
     while cur_line_no < len(dirty_file_contents):
         # Check if it is a func to be removed?
         if len(locations) > 0 and cur_line_no == locations[0]['line_no']-1:
-
             # Remove item from stack
-            #print(dirty_file_contents[cur_line_no-1])
             del locations[0]
             # Fast-forward read head to end of the func
             next_line_no = find_func(dirty_file_contents,cur_line_no) + 1  # TODO: Check if off-by-one
             cur_line_no = next_line_no
-
         else:
             clean_file_contents.append(dirty_file_contents[cur_line_no])
             cur_line_no += 1
@@ -128,7 +124,6 @@ def find_func(lines, cur_line_no):
         if in_comment or len(line_stripped)==0:
             continue
         is_clean_comment = is_comment and not is_dirty and not in_comment
-        print(is_clean_comment, idx_fuzzy)
         if is_clean_comment:
             if idx_fuzzy==-1:
                 idx_fuzzy = i
