@@ -14,6 +14,17 @@ class MyClass(object):
     def third(self):
         return 0 == 0
 
+    def fourth(self, bytes):
+        """Fourth method comment line 1
+
+        Fourth method comment line 2
+        Fourth method comment line 3
+
+        Fourth method comment line 4
+        """
+        foom = 2
+        return foom
+
     def fifth(self, laaa, deee):
         """Fifth method comment"""
         bar = laaa

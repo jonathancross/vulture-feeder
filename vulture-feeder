@@ -68,15 +68,17 @@ def get_clean_file_contents(dirty_file_contents, locations):
     cur_line_no = 0
     while cur_line_no < len(dirty_file_contents):
         # Check if it is a func to be removed?
-        if len(locations) > 0 and cur_line_no == locations[0]['line_no']:
+        if len(locations) > 0 and cur_line_no == locations[0]['line_no']-1:
 
             # Remove item from stack
+            #print(dirty_file_contents[cur_line_no-1])
             del locations[0]
             # Fast-forward read head to end of the func
-            next_line_no = find_func(dirty_file_contents,cur_line_no-1) + 1 # TODO: Check if off-by-one
-            #print('--- FUNC START')
-            #print('\n'.join(dirty_file_contents[cur_line_no:next_line_no]))
-            #print('--- FUNC END')
+            next_line_no = find_func(dirty_file_contents,cur_line_no) + 1  # TODO: Check if off-by-one
+            print('FIRST LINE: ', dirty_file_contents[cur_line_no])
+            print('--- FUNC START')
+            print(dirty_file_contents[cur_line_no:next_line_no])
+            print('--- FUNC END')
             cur_line_no = next_line_no
 
         else:
@@ -107,34 +109,44 @@ def check_comment(line, in_comment):
         #print('c) comment')
     return is_comment, in_comment, is_dirty
 
+def get_func_end(lines, cur_line_no, i, idx_fuzzy):
+    if idx_fuzzy==-1:
+        idx_out = cur_line_no+i
+    else:
+        idx_out = cur_line_no+idx_fuzzy
+    while idx_out > 1:
+        line_stripped = lines[idx_out].lstrip()
+        if len(lines[idx_out].lstrip()) > 0 and line_stripped[0] in ['#', '"']:
+            idx_out -= 1
+        else:
+            break
+    return idx_out
 
 def find_func(lines, cur_line_no):
     idx_fuzzy  = -1
     in_comment = False
     len_indent = len(lines[cur_line_no]) - len(lines[cur_line_no].lstrip())
-    #print(' --- NEW FUNC')
-    #print(len_indent, lines[cur_line_no])
     if lines[cur_line_no].lstrip().startswith('@'):
         cur_line_no += 1
-        #print(len_indent, lines[cur_line_no])
     for i,line in enumerate(lines[cur_line_no+1:]):
+        print('-- handling line ', cur_line_no, i, line[:-1])
         line_stripped = line.lstrip()
-        #print(len(line)-len(line_stripped), line)
         is_comment, in_comment, is_dirty = check_comment(line_stripped, in_comment)
-        if in_comment:
+        if in_comment or len(line_stripped)==0:
             continue
         is_clean_comment = is_comment and not is_dirty and not in_comment
-        if idx_fuzzy==-1 and (is_clean_comment or len(line_stripped)==0):
-            idx_fuzzy = i
+        print(is_clean_comment, idx_fuzzy)
+        if is_clean_comment:
+            if idx_fuzzy==-1:
+                idx_fuzzy = i
             continue
         # did we find end of function?
         if len(line)-len(line_stripped) <= len_indent:
-            if idx_fuzzy==-1:
-                return cur_line_no+i
-            else:
-                return cur_line_no+idx_fuzzy
+            print('end 1', line)
+            return get_func_end(lines, cur_line_no, i, idx_fuzzy)
         idx_fuzzy = -1
-    return len(lines)
+    print('end 2', cur_line_no, i+2, idx_fuzzy)
+    return get_func_end(lines, cur_line_no+1, i, idx_fuzzy)
 
 ################################################################################
 # END DANIEL
