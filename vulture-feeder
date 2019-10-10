@@ -9,7 +9,7 @@
 #          Check what vulture finds:
 #          vulture mydir
 #
-#          If you agree to wipe out the code vulture found:
+#          If you agree to wipe out the functions vulture found, run:
 #          vulture mydir | vulture-feeder
 #
 #          Each modified file will be written as mydir/FILENAME.new so as not to damage the original.
@@ -18,13 +18,12 @@
 # TESTING: cd test
 #          ./_run_tests.sh
 #
-# STATUS:  Pre-Alpha!  Only functions are deleted currently.
+# STATUS:  Alpha!  Only functions are deleted currently.
 #          You may need to do some manual editing to fix things that break.
 #
-# BUGS:    • Comments are not properly handled yet and can break the script.
-#          • Nested functions not handled.  Would need to count indentation, etc.
+# AUTHORS: Jonathan Cross @jonathancross 0xC0C076132FFA7695
+#          Daniel Renz    @dlrenz
 #
-# AUTHOR:  Jonathan Cross 0xC0C076132FFA7695 (jonathancross.com)
 # LICENSE: WTFPL
 #          https://github.com/jonathancross/vulture-feeder/blob/master/LICENSE
 ################################################################################
@@ -34,7 +33,11 @@ import re
 import fileinput
 
 def parse_vulture(line):
-    """Parses output from the vulture command being piped into this script."""
+    """
+    Parses output from the vulture command being piped into this script.
+    Returns a dictionary item (a particular python function and line number)
+    identified 'junk' code by vulture.
+    """
     FILENAME_LINE = 0
     TYPE = 2
     FUNC_NAME = 3
@@ -49,29 +52,38 @@ def parse_vulture(line):
                 'line_no': int(pieces.group(2))}
 
 def cleanup_files(vulture_items):
-    """Outer loop handling one or more files to be cleaned up."""
-    for file_name, locations in vulture_items.items():
-      cleanup_file(file_name, locations)
+    """
+    Outer loop handling one or more files containing 'junk' to be cleaned up.
+    """
+    for file_name, junk_funcs in vulture_items.items():
+        cleanup_file(file_name, junk_funcs)
 
-def cleanup_file(file_name, locations):
-    """Cleans up zero or more dirty code chunks (locations) in a single file."""
+def cleanup_file(file_name, junk_funcs):
+    """
+    Opens and cleans up zero or more unused functions (junk_funcs) in a py file.
+    TODO: Switch to saving backup before modifying actual file.
+    """
     dirty_file_contents = get_file_contents(file_name)
-    clean_file_contents = get_clean_file_contents(dirty_file_contents, locations)
+    clean_file_contents = get_clean_file_contents(dirty_file_contents, junk_funcs)
     clean_file = open(file_name + '.new', 'w+')
     clean_file.writelines(clean_file_contents)
     clean_file.close()
 
-def get_clean_file_contents(dirty_file_contents, locations):
-    """Loop through lines and determine if it should be preserved or discarded."""
+def get_clean_file_contents(dirty_file_contents, junk_funcs):
+    """
+    Loop through lines and determine if it should be preserved or discarded.
+    Returns clean_file_contents - array of lines we want to keep from the file
+                                  after junk has been removed.
+    """
     clean_file_contents = []
     cur_line_no = 0
     while cur_line_no < len(dirty_file_contents):
         # Check if it is a func to be removed?
-        if len(locations) > 0 and cur_line_no == locations[0]['line_no']-1:
-            # Remove item from stack
-            del locations[0]
-            # Fast-forward read head to end of the func
-            next_line_no = find_func(dirty_file_contents,cur_line_no) + 1  # TODO: Check if off-by-one
+        if len(junk_funcs) > 0 and cur_line_no == junk_funcs[0]['line_no'] - 1:
+            # Remove item from stack:
+            del junk_funcs[0]
+            # Fast-forward read head to end of the func:
+            next_line_no = find_func(dirty_file_contents, cur_line_no) + 1
             cur_line_no = next_line_no
         else:
             clean_file_contents.append(dirty_file_contents[cur_line_no])
@@ -79,14 +91,19 @@ def get_clean_file_contents(dirty_file_contents, locations):
     return clean_file_contents
 
 def check_comment(line, in_comment):
-    """ helper function for find_func. finds multi-line comments and single-line comments.
-        outputs in_comment=True if line is inside a multi-line comment. """
+    """
+    Helper function for find_func(). Finds single & multi-line comments.
+    Returns 3 values:
+        is_comment - True if line is a comment line.
+        in_comment - True if line is inside a multi-line comment.
+        is_dirty   - Does this indicate we are inside a multi-line comment?
+    """
     is_dirty = False
     is_comment = False
     idx_comment = line.find('#')
     n_multcomment = line.count('"""')
     idx_multcomment = line.find('"""')
-    if n_multcomment > 0 and (idx_comment==-1 or idx_comment>idx_multcomment):
+    if n_multcomment > 0 and (idx_comment == -1 or idx_comment > idx_multcomment):
         is_dirty = idx_multcomment > 0
         if n_multcomment % 2 != 0:
             in_comment = not in_comment
@@ -97,11 +114,15 @@ def check_comment(line, in_comment):
     return is_comment, in_comment, is_dirty
 
 def get_func_end(lines, cur_line_no, i, idx_fuzzy):
-    """ helper function for find_func, finds blank lines and comments after end of function """
-    if idx_fuzzy==-1:
-        idx_out = cur_line_no+i
+    """
+    Helper function for find_func() that finds blank lines and comments after
+    the end of a function.
+    Returns idx_out - Index number indicating the last line of the function.
+    """
+    if idx_fuzzy == -1:
+        idx_out = cur_line_no + i
     else:
-        idx_out = cur_line_no+idx_fuzzy
+        idx_out = cur_line_no + idx_fuzzy
     while idx_out > 1:
         line_stripped = lines[idx_out].lstrip()
         if len(lines[idx_out].lstrip()) > 0 and line_stripped[0] in ['#', '"']:
@@ -111,50 +132,63 @@ def get_func_end(lines, cur_line_no, i, idx_fuzzy):
     return idx_out
 
 def find_func(lines, cur_line_no):
-    """ cur_line_no indicates start of function, including decorators and comments before
-        the actual function definition. output is the last line of the function """
+    """
+    cur_line_no indicates the start of function, including decorators and
+    comments before the actual function definition.
+    Returns the line number indicating last line of the function.
+    """
     idx_fuzzy  = -1
     in_comment = False
-    len_indent = len(lines[cur_line_no]) - len(lines[cur_line_no].lstrip())
-    if lines[cur_line_no].lstrip().startswith('@'):
+    cur_line = lines[cur_line_no]
+    cur_line_unindent = cur_line.lstrip()
+    len_indent = len(cur_line) - len(cur_line_unindent)
+    if cur_line_unindent.startswith('@'):
         cur_line_no += 1
-    for i,line in enumerate(lines[cur_line_no+1:]):
+    for i, line in enumerate(lines[cur_line_no + 1:]):
         line_stripped = line.lstrip()
         is_comment, in_comment, is_dirty = check_comment(line_stripped, in_comment)
-        if in_comment or len(line_stripped)==0:
+        if in_comment or len(line_stripped) == 0:
             continue
         is_clean_comment = is_comment and not is_dirty and not in_comment
         if is_clean_comment:
-            if idx_fuzzy==-1:
+            if idx_fuzzy == -1:
                 idx_fuzzy = i
             continue
         # did we find end of function?
-        if len(line)-len(line_stripped) <= len_indent:
+        if len(line) - len(line_stripped) <= len_indent:
             return get_func_end(lines, cur_line_no, i, idx_fuzzy)
         idx_fuzzy = -1
-    return get_func_end(lines, cur_line_no+1, i, idx_fuzzy)
+    return get_func_end(lines, cur_line_no + 1, i, idx_fuzzy)
 
 def get_file_contents(file_name):
-    """Loads and returns the contents of a file."""
+    """
+    Loads and returns the contents of a file.
+    Returns dirty_file_contents - array of lines from a file containing junk.
+    """
     dirty_file = open(file_name, 'r')
     dirty_file_contents = dirty_file.readlines()
     dirty_file.close()
     return dirty_file_contents
 
 def read_vulture_data():
-    """Read lines from STDIN indicating what should be cleaned up."""
+    """
+    Read lines from STDIN indicating what should be cleaned up.
+    Returns vulture_items - List of functions to be deleted from the codebase.
+    """
     # List of items (file name & line number) considered unnecessary.
     vulture_items = {}
     for line in sys.stdin.read().split('\n'):
         cleanup_item = parse_vulture(line)
         if cleanup_item:
-            fn = cleanup_item['file_name']
+            file_name = cleanup_item['file_name']
             del cleanup_item['file_name']
-            if not fn in vulture_items:
-                vulture_items[fn] = []
-            vulture_items[fn].append(cleanup_item)
+            if not file_name in vulture_items:
+                vulture_items[file_name] = []
+            vulture_items[file_name].append(cleanup_item)
     return vulture_items
 
 if __name__ == "__main__":
-    """Begin cleanup process"""
+    """
+    Begin the cleanup process.
+    """
     cleanup_files(read_vulture_data())
